@@ -1,3 +1,4 @@
+// jogo.go
 package main
 
 import (
@@ -49,7 +50,7 @@ type Inimigo struct {
 	Elemento
 	PosX, PosY  int
 	Visivel     bool
-	PatrulhaDir int // +1 ou -1
+	PatrulhaDir int
 	Vida        int
 }
 
@@ -65,30 +66,48 @@ func novoElemento(sim rune, cor, corFundo Cor, tang bool) Elemento {
 }
 
 func adicionarInimigos(jogo *Jogo) {
-	jogo.Inimigos = append(jogo.Inimigos,
-		Inimigo{Elemento: Parede, PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 3},
-		Inimigo{Elemento: Vegetacao, PosX: 10, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 3},
-	)
+	// símbolos exclusivos para diferenciação
+	inim1 := Inimigo{Elemento: novoElemento('⚔', CorVermelho, CorPadrao, true), PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 3}
+	inim2 := Inimigo{Elemento: novoElemento('⚔', CorVermelho, CorPadrao, true), PosX: 10, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 3}
+	jogo.Inimigos = append(jogo.Inimigos, inim1, inim2)
 }
 
 func adicionarSegurancas(jogo *Jogo) {
-	g1 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 5}
-	g2 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 10, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 5}
+	g1 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 15, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 5}
+	g2 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 20, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 5}
 	jogo.Inimigos = append(jogo.Inimigos, g1, g2)
 }
 
-func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string) {
+// loopConcorrente agora recebe canal de detecção
+func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string, chDet chan struct{}) {
+	pursuing := false
 	for {
 		select {
+		case <-chDet:
+			pursuing = true
+
 		case <-chPat:
 			jogo.Mutex.Lock()
-			nx := i.PosX + i.PatrulhaDir
-			if !jogoPodeMoverPara(jogo, nx, i.PosY) {
-				i.PatrulhaDir *= -1
-				nx = i.PosX + i.PatrulhaDir
-			}
-			if jogoPodeMoverPara(jogo, nx, i.PosY) {
-				i.PosX = nx
+			if pursuing {
+				// perseguição: aproxima do jogador
+				dx := jogo.PosX - i.PosX
+				dy := jogo.PosY - i.PosY
+				if dx != 0 {
+					i.PosX += dx / abs(dx)
+				}
+				if dy != 0 {
+					i.PosY += dy / abs(dy)
+				}
+			} else {
+				// patrulha normal
+				nx := i.PosX + i.PatrulhaDir
+				if !jogoPodeMoverPara(jogo, nx, i.PosY) {
+					i.PatrulhaDir *= -1
+					nx = i.PosX + i.PatrulhaDir
+				}
+				if jogoPodeMoverPara(jogo, nx, i.PosY) {
+					i.PosX = nx
+				}
 			}
 			jogo.Mutex.Unlock()
 			interfaceDesenharJogo(jogo)
@@ -97,7 +116,7 @@ func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string) {
 			jogo.Mutex.Lock()
 			if jogo.PosX == i.PosX && jogo.PosY == i.PosY {
 				jogo.VidaPersonagem--
-				jogo.StatusMsg = fmt.Sprintf("Voc\u00ea foi atingido por um guarda! Vida: %d", jogo.VidaPersonagem)
+				jogo.StatusMsg = fmt.Sprintf("Você foi atingido! Vida: %d", jogo.VidaPersonagem)
 			}
 			jogo.Mutex.Unlock()
 			interfaceDesenharJogo(jogo)
@@ -112,6 +131,7 @@ func jogoCarregarMapa(nome string, jogo *Jogo) error {
 		return err
 	}
 	defer f.Close()
+
 	scanner := bufio.NewScanner(f)
 	y := 0
 	for scanner.Scan() {
@@ -140,4 +160,11 @@ func jogoPodeMoverPara(jogo *Jogo, x, y int) bool {
 		return false
 	}
 	return !jogo.Mapa[y][x].tangivel
+}
+
+func abs(a int) int {
+	if a < 0 {
+		return -a
+	}
+	return a
 }

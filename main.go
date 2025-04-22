@@ -1,8 +1,14 @@
+// main.go
 package main
 
 import (
 	"os"
 	"time"
+)
+
+var (
+	chPortal chan struct{}
+	detChans []chan struct{}
 )
 
 func moveEmDirecao(jogo *Jogo, x, y *int) {
@@ -22,6 +28,8 @@ func main() {
 	interfaceIniciar()
 	defer interfaceFinalizar()
 
+	// canais globais
+	chPortal = make(chan struct{})
 	// Carrega o mapa
 	mapa := "mapa.txt"
 	if len(os.Args) > 1 {
@@ -32,30 +40,38 @@ func main() {
 		panic(err)
 	}
 
-	// Adiciona inimigos de patrulha e seguranças
+	// adiciona inimigos de patrulha e seguranças
 	adicionarInimigos(&jogo)
 	adicionarSegurancas(&jogo)
-	// Índice do futuro seguidor
+
+	// preparamos canais de detecção para os dois inimigos originais
+	totalPatrol := len(jogo.Inimigos)
+	detChans = make([]chan struct{}, totalPatrol)
+	for i := 0; i < totalPatrol; i++ {
+		detChans[i] = make(chan struct{})
+	}
+
+	// adiciona seguidor
 	segIdx := len(jogo.Inimigos)
-	// Adiciona o seguidor
 	jogo.Inimigos = append(jogo.Inimigos,
 		Inimigo{Elemento: novoElemento('☻', CorVerde, CorPadrao, true), PosX: 1, PosY: 1, Visivel: true, PatrulhaDir: 1, Vida: 3},
 	)
 
-	// Inicia geloConcorrente para todos exceto o seguidor
-	totalPatrol := segIdx
+	// inicia loops de inimigos
 	for i := 0; i < totalPatrol; i++ {
 		chPat := make(chan string)
 		chRea := make(chan string)
-		go jogo.Inimigos[i].loopConcorrente(&jogo, chPat, chRea)
-		// Comando patrulha
+		go jogo.Inimigos[i].loopConcorrente(&jogo, chPat, chRea, detChans[i])
+
+		// patrulha periódica
 		go func(c chan string) {
 			for {
 				time.Sleep(2 * time.Second)
 				c <- "patrulhar"
 			}
 		}(chPat)
-		// Comando ataque
+
+		// ataque ao colidir
 		go func(c chan string, inim *Inimigo) {
 			for {
 				jogo.Mutex.Lock()
@@ -70,34 +86,37 @@ func main() {
 		}(chRea, &jogo.Inimigos[i])
 	}
 
-	// Inicia goroutine do seguidor
+	// seguidor
 	go func() {
 		for {
 			jogo.Mutex.Lock()
 			moveEmDirecao(&jogo, &jogo.Inimigos[segIdx].PosX, &jogo.Inimigos[segIdx].PosY)
-			interfaceDesenharJogo(&jogo)
 			jogo.Mutex.Unlock()
+			interfaceDesenharJogo(&jogo)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}()
 
-	// Item autônomo
+	// item autônomo com canal + timeout
 	jogo.Items = append(jogo.Items, Item{Simbolo: '♦', Visivel: false, PosX: 10, PosY: 5})
 	go func() {
-		<-time.After(5 * time.Second)
+		select {
+		case <-chPortal: // aparece ao interagir
+		case <-time.After(5 * time.Second): // ou por timeout
+		}
 		jogo.Mutex.Lock()
 		jogo.Items[0].Visivel = true
-		interfaceDesenharJogo(&jogo)
 		jogo.Mutex.Unlock()
+		interfaceDesenharJogo(&jogo)
 
-		<-time.After(10 * time.Second)
+		<-time.After(10 * time.Second) // depois some
 		jogo.Mutex.Lock()
 		jogo.Items[0].Visivel = false
-		interfaceDesenharJogo(&jogo)
 		jogo.Mutex.Unlock()
+		interfaceDesenharJogo(&jogo)
 	}()
 
-	// Loop principal
+	// loop principal
 	interfaceDesenharJogo(&jogo)
 	for {
 		ev := interfaceLerEventoTeclado()

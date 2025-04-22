@@ -1,3 +1,4 @@
+// interface.go
 package main
 
 import (
@@ -36,11 +37,11 @@ func interfaceAtualizarTela() {
 	termbox.Flush()
 }
 
-func interfaceDesenharElemento(x, y int, elem Elemento) {
-	termbox.SetCell(x, y, elem.simbolo, elem.cor, elem.corFundo)
-}
-
+// Protegido por mutex para evitar race conditions durante o redraw
 func interfaceDesenharJogo(jogo *Jogo) {
+	jogo.Mutex.Lock()
+	defer jogo.Mutex.Unlock()
+
 	interfaceLimparTela()
 	for y, linha := range jogo.Mapa {
 		for x, elem := range linha {
@@ -59,11 +60,17 @@ func interfaceDesenharJogo(jogo *Jogo) {
 		}
 	}
 	interfaceDesenharElemento(jogo.PosX, jogo.PosY, Personagem)
+
 	status := fmt.Sprintf("Vida: %d    %s", jogo.VidaPersonagem, jogo.StatusMsg)
 	for i, c := range status {
 		termbox.SetCell(i, len(jogo.Mapa)+1, c, CorTexto, CorPadrao)
 	}
+
 	interfaceAtualizarTela()
+}
+
+func interfaceDesenharElemento(x, y int, elem Elemento) {
+	termbox.SetCell(x, y, elem.simbolo, elem.cor, elem.corFundo)
 }
 
 func interfaceLerEventoTeclado() EventoTeclado {
