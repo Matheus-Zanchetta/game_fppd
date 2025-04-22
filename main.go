@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// Move o seguidor em direção ao jogador
 func moveEmDirecao(jogo *Jogo, x, y *int) {
 	if jogo.PosX > *x && jogoPodeMoverPara(jogo, *x+1, *y) {
 		*x++
@@ -23,42 +22,55 @@ func main() {
 	interfaceIniciar()
 	defer interfaceFinalizar()
 
+	// Carrega o mapa
 	mapa := "mapa.txt"
 	if len(os.Args) > 1 {
 		mapa = os.Args[1]
 	}
-
 	jogo := jogoNovo()
 	if err := jogoCarregarMapa(mapa, &jogo); err != nil {
 		panic(err)
 	}
 
+	// Adiciona inimigos de patrulha e seguranças
 	adicionarInimigos(&jogo)
 	adicionarSegurancas(&jogo)
-
-	for i := range jogo.Inimigos {
-		chPat, chRea := make(chan string), make(chan string)
-		go jogo.Inimigos[i].loopConcorrente(&jogo, chPat, chRea)
-		go func(c chan string) {
-			for {
-				time.Sleep(3 * time.Second)
-				c <- "patrulhar"
-			}
-		}(chPat)
-		go func(c chan string, idx int) {
-			for {
-				if jogo.PosX == jogo.Inimigos[idx].PosX && jogo.PosY == jogo.Inimigos[idx].PosY {
-					c <- "atacar"
-				}
-				time.Sleep(1 * time.Second)
-			}
-		}(chRea, i)
-	}
-
+	// Índice do futuro seguidor
 	segIdx := len(jogo.Inimigos)
+	// Adiciona o seguidor
 	jogo.Inimigos = append(jogo.Inimigos,
 		Inimigo{Elemento: novoElemento('☻', CorVerde, CorPadrao, true), PosX: 1, PosY: 1, Visivel: true, PatrulhaDir: 1, Vida: 3},
 	)
+
+	// Inicia geloConcorrente para todos exceto o seguidor
+	totalPatrol := segIdx
+	for i := 0; i < totalPatrol; i++ {
+		chPat := make(chan string)
+		chRea := make(chan string)
+		go jogo.Inimigos[i].loopConcorrente(&jogo, chPat, chRea)
+		// Comando patrulha
+		go func(c chan string) {
+			for {
+				time.Sleep(2 * time.Second)
+				c <- "patrulhar"
+			}
+		}(chPat)
+		// Comando ataque
+		go func(c chan string, inim *Inimigo) {
+			for {
+				jogo.Mutex.Lock()
+				px, py := jogo.PosX, jogo.PosY
+				gx, gy := inim.PosX, inim.PosY
+				jogo.Mutex.Unlock()
+				if px == gx && py == gy {
+					c <- "atacar"
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		}(chRea, &jogo.Inimigos[i])
+	}
+
+	// Inicia goroutine do seguidor
 	go func() {
 		for {
 			jogo.Mutex.Lock()
@@ -69,21 +81,15 @@ func main() {
 		}
 	}()
 
+	// Item autônomo
 	jogo.Items = append(jogo.Items, Item{Simbolo: '♦', Visivel: false, PosX: 10, PosY: 5})
 	go func() {
-		time.Sleep(5 * time.Second)
+		<-time.After(5 * time.Second)
 		jogo.Mutex.Lock()
 		jogo.Items[0].Visivel = true
 		interfaceDesenharJogo(&jogo)
 		jogo.Mutex.Unlock()
 
-		time.Sleep(10 * time.Second)
-		jogo.Mutex.Lock()
-		jogo.Items[0].Visivel = false
-		interfaceDesenharJogo(&jogo)
-		jogo.Mutex.Unlock()
-	}()
-	go func() {
 		<-time.After(10 * time.Second)
 		jogo.Mutex.Lock()
 		jogo.Items[0].Visivel = false
@@ -91,6 +97,7 @@ func main() {
 		jogo.Mutex.Unlock()
 	}()
 
+	// Loop principal
 	interfaceDesenharJogo(&jogo)
 	for {
 		ev := interfaceLerEventoTeclado()

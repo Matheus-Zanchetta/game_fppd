@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// Elemento representa célula, personagem ou inimigo
 type Elemento struct {
 	simbolo  rune
 	cor      Cor
@@ -16,7 +15,6 @@ type Elemento struct {
 	tangivel bool
 }
 
-// Jogo contém todo o estado
 type Jogo struct {
 	Mapa           [][]Elemento
 	PosX, PosY     int
@@ -41,36 +39,31 @@ func jogoNovo() Jogo {
 	}
 }
 
-// Item autônomo
 type Item struct {
 	Simbolo    rune
 	Visivel    bool
 	PosX, PosY int
 }
 
-// Inimigo autônomo com patrulha e vida
 type Inimigo struct {
 	Elemento
 	PosX, PosY  int
 	Visivel     bool
-	PatrulhaDir int // +1 ou -1 para patrulha
+	PatrulhaDir int // +1 ou -1
 	Vida        int
 }
 
 var (
-	Personagem  = Elemento{'☺', CorCinzaEscuro, CorPadrao, true}
-	Parede      = Elemento{'▤', CorParede, CorFundoParede, true}
-	Vegetacao   = Elemento{'♣', CorVerde, CorPadrao, false}
-	Vazio       = Elemento{' ', CorPadrao, CorPadrao, false}
-	PatrulhaDir = Elemento{'☠', CorVermelho, CorPadrao, true}
+	Personagem = Elemento{'☺', CorCinzaEscuro, CorPadrao, true}
+	Parede     = Elemento{'▤', CorParede, CorFundoParede, true}
+	Vegetacao  = Elemento{'♣', CorVerde, CorPadrao, false}
+	Vazio      = Elemento{' ', CorPadrao, CorPadrao, false}
 )
 
-// Construtor de Elemento
 func novoElemento(sim rune, cor, corFundo Cor, tang bool) Elemento {
 	return Elemento{simbolo: sim, cor: cor, corFundo: corFundo, tangivel: tang}
 }
 
-// Adiciona inimigos base
 func adicionarInimigos(jogo *Jogo) {
 	jogo.Inimigos = append(jogo.Inimigos,
 		Inimigo{Elemento: Parede, PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 3},
@@ -78,40 +71,36 @@ func adicionarInimigos(jogo *Jogo) {
 	)
 }
 
-// Adiciona dois seguranças patrulhando áreas específicas
 func adicionarSegurancas(jogo *Jogo) {
-	// Guarda 1: x de 2 a 8 na linha y=3
-	g1 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 15, PosY: 3, Visivel: true, PatrulhaDir: 1, Vida: 5}
-	// Guarda 2: x de 15 a 22 na linha y=6
-	g2 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 25, PosY: 6, Visivel: true, PatrulhaDir: 1, Vida: 5}
+	g1 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 5}
+	g2 := Inimigo{Elemento: novoElemento('☠', CorVermelho, CorPadrao, true), PosX: 10, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 5}
 	jogo.Inimigos = append(jogo.Inimigos, g1, g2)
 }
 
-// Patrulha e reação via canais
 func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string) {
 	for {
 		select {
 		case <-chPat:
 			jogo.Mutex.Lock()
 			nx := i.PosX + i.PatrulhaDir
-			// inverte se bate em obstáculo
 			if !jogoPodeMoverPara(jogo, nx, i.PosY) {
-				i.PatrulhaDir *= +1
+				i.PatrulhaDir *= -1
 				nx = i.PosX + i.PatrulhaDir
 			}
 			if jogoPodeMoverPara(jogo, nx, i.PosY) {
 				i.PosX = nx
 			}
 			jogo.Mutex.Unlock()
+			interfaceDesenharJogo(jogo)
 
 		case <-chRea:
 			jogo.Mutex.Lock()
 			if jogo.PosX == i.PosX && jogo.PosY == i.PosY {
-				// desconta 2 pontos de vida em vez de atribuir valor fixo
-				jogo.VidaPersonagem -= 2
-				jogo.StatusMsg = fmt.Sprintf("Você foi atingido! Vida restante: %d", jogo.VidaPersonagem)
+				jogo.VidaPersonagem--
+				jogo.StatusMsg = fmt.Sprintf("Voc\u00ea foi atingido por um guarda! Vida: %d", jogo.VidaPersonagem)
 			}
 			jogo.Mutex.Unlock()
+			interfaceDesenharJogo(jogo)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -123,11 +112,10 @@ func jogoCarregarMapa(nome string, jogo *Jogo) error {
 		return err
 	}
 	defer f.Close()
-
-	s := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(f)
 	y := 0
-	for s.Scan() {
-		linha := s.Text()
+	for scanner.Scan() {
+		linha := scanner.Text()
 		row := make([]Elemento, 0, len(linha))
 		for x, ch := range linha {
 			e := Vazio
@@ -144,11 +132,11 @@ func jogoCarregarMapa(nome string, jogo *Jogo) error {
 		jogo.Mapa = append(jogo.Mapa, row)
 		y++
 	}
-	return s.Err()
+	return scanner.Err()
 }
 
 func jogoPodeMoverPara(jogo *Jogo, x, y int) bool {
-	if y < 0 || y >= len(jogo.Mapa) || x < 0 || x >= len(jogo.Mapa[y]) {
+	if y < 0 || y >= len(jogo.Mapa) || x < 0 || x >= len(jogo.Mapa[0]) {
 		return false
 	}
 	return !jogo.Mapa[y][x].tangivel

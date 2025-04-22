@@ -6,7 +6,6 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
-// Cor encapsula as cores do termbox
 type Cor = termbox.Attribute
 
 const (
@@ -43,28 +42,23 @@ func interfaceDesenharElemento(x, y int, elem Elemento) {
 
 func interfaceDesenharJogo(jogo *Jogo) {
 	interfaceLimparTela()
-	// Desenha mapa
 	for y, linha := range jogo.Mapa {
 		for x, elem := range linha {
 			interfaceDesenharElemento(x, y, elem)
 		}
 	}
-	// Desenha itens
 	for _, item := range jogo.Items {
 		if item.Visivel {
 			interfaceDesenharElemento(item.PosX, item.PosY,
 				novoElemento(item.Simbolo, CorVerde, CorPadrao, false))
 		}
 	}
-	// Desenha inimigos
 	for _, inimigo := range jogo.Inimigos {
 		if inimigo.Visivel {
 			interfaceDesenharElemento(inimigo.PosX, inimigo.PosY, inimigo.Elemento)
 		}
 	}
-	// Desenha personagem
 	interfaceDesenharElemento(jogo.PosX, jogo.PosY, Personagem)
-	// Barra de status
 	status := fmt.Sprintf("Vida: %d    %s", jogo.VidaPersonagem, jogo.StatusMsg)
 	for i, c := range status {
 		termbox.SetCell(i, len(jogo.Mapa)+1, c, CorTexto, CorPadrao)
