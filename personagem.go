@@ -1,4 +1,3 @@
-// personagem.go
 package main
 
 type EventoTeclado struct {

@@ -1,4 +1,3 @@
-// main.go
 package main
 
 import (
@@ -66,7 +65,7 @@ func main() {
 		// patrulha periódica
 		go func(c chan string) {
 			for {
-				time.Sleep(2 * time.Second)
+				time.Sleep(4 * time.Second)
 				c <- "patrulhar"
 			}
 		}(chPat)

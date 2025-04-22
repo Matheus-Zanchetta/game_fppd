@@ -1,4 +1,3 @@
-// jogo.go
 package main
 
 import (
@@ -66,7 +65,6 @@ func novoElemento(sim rune, cor, corFundo Cor, tang bool) Elemento {
 }
 
 func adicionarInimigos(jogo *Jogo) {
-	// símbolos exclusivos para diferenciação
 	inim1 := Inimigo{Elemento: novoElemento('⚔', CorVermelho, CorPadrao, true), PosX: 5, PosY: 5, Visivel: true, PatrulhaDir: 1, Vida: 3}
 	inim2 := Inimigo{Elemento: novoElemento('⚔', CorVermelho, CorPadrao, true), PosX: 10, PosY: 7, Visivel: true, PatrulhaDir: 1, Vida: 3}
 	jogo.Inimigos = append(jogo.Inimigos, inim1, inim2)
@@ -78,7 +76,7 @@ func adicionarSegurancas(jogo *Jogo) {
 	jogo.Inimigos = append(jogo.Inimigos, g1, g2)
 }
 
-// loopConcorrente agora recebe canal de detecção
+// loopConcorrente agora verifica colisão com paredes tanto na patrulha quanto na perseguição
 func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string, chDet chan struct{}) {
 	pursuing := false
 	for {
@@ -89,17 +87,25 @@ func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string, chDet ch
 		case <-chPat:
 			jogo.Mutex.Lock()
 			if pursuing {
-				// perseguição: aproxima do jogador
+				// perseguir jogador sem atravessar paredes
 				dx := jogo.PosX - i.PosX
 				dy := jogo.PosY - i.PosY
+				// movimento horizontal
 				if dx != 0 {
-					i.PosX += dx / abs(dx)
+					nx := i.PosX + dx/abs(dx)
+					if jogoPodeMoverPara(jogo, nx, i.PosY) {
+						i.PosX = nx
+					}
 				}
+				// movimento vertical
 				if dy != 0 {
-					i.PosY += dy / abs(dy)
+					ny := i.PosY + dy/abs(dy)
+					if jogoPodeMoverPara(jogo, i.PosX, ny) {
+						i.PosY = ny
+					}
 				}
 			} else {
-				// patrulha normal
+				// patrulha normal sem atravessar paredes
 				nx := i.PosX + i.PatrulhaDir
 				if !jogoPodeMoverPara(jogo, nx, i.PosY) {
 					i.PatrulhaDir *= -1
@@ -121,7 +127,7 @@ func (i *Inimigo) loopConcorrente(jogo *Jogo, chPat, chRea chan string, chDet ch
 			jogo.Mutex.Unlock()
 			interfaceDesenharJogo(jogo)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

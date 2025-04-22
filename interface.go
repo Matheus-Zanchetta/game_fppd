@@ -1,4 +1,3 @@
-// interface.go
 package main
 
 import (
